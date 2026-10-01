@@ -15,9 +15,11 @@ sealed interface HistoryUiState {
 
 /**
  * One History row, display-ready: [date] as `2026-09-30` and [weight] in kilograms to one decimal
- * place, without a unit. The screen appends the unit from resources.
+ * place, without a unit. The screen appends the unit from resources. [epochDay] is the same
+ * Record Date as a date rather than a label, which is what opening the Record for editing needs.
  */
 data class RecordRow(
+    val epochDay: Long,
     val date: String,
     val weight: String
 )

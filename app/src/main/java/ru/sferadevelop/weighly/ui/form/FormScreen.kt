@@ -109,7 +109,21 @@ private fun FormScreen(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = { TopAppBar(title = { Text(stringResource(R.string.form_title_new)) }) }
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        stringResource(
+                            if (uiState.editing) {
+                                R.string.form_title_edit
+                            } else {
+                                R.string.form_title_new
+                            }
+                        )
+                    )
+                }
+            )
+        }
     ) { innerPadding ->
         Column(
             modifier = Modifier

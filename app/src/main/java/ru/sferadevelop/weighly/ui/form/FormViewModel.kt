@@ -68,6 +68,7 @@ class FormViewModel(
                 weight = weight,
                 date = LocalDate.ofEpochDay(date).toString(),
                 epochDay = date,
+                editing = editedRecordDate != null,
                 saved = saved,
                 error = error,
                 replacement = replacement
@@ -78,7 +79,8 @@ class FormViewModel(
             initialValue = FormUiState(
                 weight = typedWeight.value,
                 date = recordDateValue().toString(),
-                epochDay = recordDate.value
+                epochDay = recordDate.value,
+                editing = editedRecordDate != null
             )
         )
 
@@ -89,9 +91,10 @@ class FormViewModel(
     private fun recordDateValue(): LocalDate = LocalDate.ofEpochDay(recordDate.value)
 
     /**
-     * Opens the field on the Weight of the Record with the greatest Record Date not after today,
-     * so that daily entry is a correction of a digit or two. A Record dated in the future is
-     * passed over: an accidental one would otherwise poison entry every day.
+     * Opens the field on the Weight the Form is about: the Record being edited, or - when one is
+     * being created - the Record with the greatest Record Date not after today, so that daily
+     * entry is a correction of a digit or two. A Record dated in the future is passed over: an
+     * accidental one would otherwise poison entry every day.
      *
      * Runs once per Form rather than once per ViewModel: after recreation the field carries
      * whatever was typed, which may deliberately be nothing.
@@ -99,9 +102,14 @@ class FormViewModel(
     private fun prefillLastWeight() {
         if (savedStateHandle.get<Boolean>(PREFILLED_KEY) == true) return
         viewModelScope.launch {
-            val lastRecord = repository.latestRecordNotAfter(LocalDate.now())
-            if (lastRecord != null && !typedInto && typedWeight.value.isEmpty()) {
-                savedStateHandle[WEIGHT_KEY] = weightToDisplay(lastRecord.grams)
+            val openedOn = editedRecordDate
+            val record = if (openedOn == null) {
+                repository.latestRecordNotAfter(LocalDate.now())
+            } else {
+                repository.recordOn(openedOn)
+            }
+            if (record != null && !typedInto && typedWeight.value.isEmpty()) {
+                savedStateHandle[WEIGHT_KEY] = weightToDisplay(record.grams)
             }
             // Marked only once the answer is in: a process death while waiting would otherwise
             // leave a Form that never prefills again.
@@ -167,7 +175,13 @@ class FormViewModel(
 
     private suspend fun write(grams: Int) {
         writing = true
-        repository.save(Record(date = recordDateValue(), grams = grams))
+        val record = Record(date = recordDateValue(), grams = grams)
+        val movedFrom = editedRecordDate?.takeIf { it != record.date }
+        if (movedFrom == null) {
+            repository.save(record)
+        } else {
+            repository.move(from = movedFrom, record = record)
+        }
         saved.value = true
     }
 

@@ -28,6 +28,10 @@ class FakeWeightRepository(initialRecords: List<Record> = emptyList()) : WeightR
         stored.update { records -> records + (record.date to record) }
     }
 
+    override suspend fun move(from: LocalDate, record: Record) {
+        stored.update { records -> records - from + (record.date to record) }
+    }
+
     override suspend fun deleteOn(date: LocalDate) {
         stored.update { records -> records - date }
     }

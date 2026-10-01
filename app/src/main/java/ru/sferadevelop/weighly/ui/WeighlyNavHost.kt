@@ -24,7 +24,10 @@ fun WeighlyNavHost() {
     val navController = rememberNavController()
     NavHost(navController = navController, startDestination = HistoryRoute) {
         composable<HistoryRoute> {
-            HistoryScreen(onAddRecord = { navController.navigate(FormRoute()) })
+            HistoryScreen(
+                onAddRecord = { navController.navigate(FormRoute()) },
+                onEditRecord = { epochDay -> navController.navigate(FormRoute(epochDay)) }
+            )
         }
         composable<FormRoute> {
             // Save and Cancel leave the Form the same way, which is what the system back does too.

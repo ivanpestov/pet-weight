@@ -18,6 +18,12 @@ interface WeightRepository {
     /** Stores [record], replacing whatever Record its date already held. */
     suspend fun save(record: Record)
 
+    /**
+     * Moves a Record from [from] onto [record]'s own date as one operation: a Record edited onto
+     * another day must not leave a copy of itself behind on the old one.
+     */
+    suspend fun move(from: LocalDate, record: Record)
+
     /** Removes the Record on [date]; does nothing when that date holds none. */
     suspend fun deleteOn(date: LocalDate)
 }
