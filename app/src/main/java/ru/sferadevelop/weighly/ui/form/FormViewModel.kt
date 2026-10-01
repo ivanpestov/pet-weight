@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.sferadevelop.weighly.domain.Record
 import ru.sferadevelop.weighly.domain.WeightRepository
+import ru.sferadevelop.weighly.ui.filterTypedWeight
 import ru.sferadevelop.weighly.ui.weightFromDisplay
 import ru.sferadevelop.weighly.weighlyApplication
 import java.time.LocalDate
@@ -31,33 +32,60 @@ class FormViewModel(
 
     private val saved = MutableStateFlow(false)
 
+    private val error = MutableStateFlow<FormError?>(null)
+
     /** Guards a second tap on Save while the first write is still in flight. */
     private var writing = false
 
-    val uiState: StateFlow<FormUiState> = combine(typedWeight, saved) { weight, saved ->
-        FormUiState(weight = weight, date = recordDate.toString(), saved = saved)
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-        initialValue = FormUiState(weight = typedWeight.value, date = recordDate.toString())
-    )
+    val uiState: StateFlow<FormUiState> =
+        combine(typedWeight, saved, error) { weight, saved, error ->
+            FormUiState(
+                weight = weight,
+                date = recordDate.toString(),
+                saved = saved,
+                error = error
+            )
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            initialValue = FormUiState(weight = typedWeight.value, date = recordDate.toString())
+        )
 
+    /** Keeps only what may be a Weight; judging it waits for Save. */
     fun onWeightTyped(weight: String) {
-        savedStateHandle[WEIGHT_KEY] = weight
+        savedStateHandle[WEIGHT_KEY] = filterTypedWeight(weight)
     }
 
     /**
-     * Writes the typed Weight against the Record Date. Text that is not a Weight writes nothing.
-     * The write runs on [viewModelScope], so leaving the screen cannot cancel it halfway.
+     * Writes the typed Weight against the Record Date, or reports why it will not. The write runs
+     * on [viewModelScope], so leaving the screen cannot cancel it halfway.
      */
     fun save() {
         if (writing) return
-        val grams = weightFromDisplay(typedWeight.value) ?: return
-        writing = true
-        viewModelScope.launch {
-            repository.save(Record(date = recordDate, grams = grams))
-            saved.value = true
+        error.value = null
+
+        val typed = typedWeight.value
+        val grams = weightFromDisplay(typed)
+        when {
+            typed.none(Char::isDigit) -> error.value = FormError.EMPTY_WEIGHT
+            grams == null || grams !in MIN_GRAMS..MAX_GRAMS ->
+                error.value = FormError.WEIGHT_OUT_OF_RANGE
+
+            else -> {
+                writing = true
+                viewModelScope.launch {
+                    repository.save(Record(date = recordDate, grams = grams))
+                    saved.value = true
+                }
+            }
         }
+    }
+
+    /**
+     * Takes the message off the screen, leaving the typed text and the Record Date as they were.
+     */
+    fun dismissError() {
+        error.value = null
     }
 
     companion object {
@@ -65,6 +93,11 @@ class FormViewModel(
         private const val EPOCH_DAY_KEY = "epochDay"
 
         private const val WEIGHT_KEY = "weight"
+
+        /** The Weights a bathroom scale can produce: 1.0 kg to 500.0 kg, boundaries included. */
+        private const val MIN_GRAMS = 1_000
+        private const val MAX_GRAMS = 500_000
+
         private const val STOP_TIMEOUT_MILLIS = 5_000L
 
         val Factory = viewModelFactory {

@@ -100,27 +100,172 @@ class FormViewModelTest {
     }
 
     @Test
-    fun `saving an empty field writes no Record and stays in the Form`() = runTest {
+    fun `a typed comma is shown back as a period`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.onWeightTyped("72,4")
+
+        assertEquals("72.4", collectedState(viewModel.uiState).weight)
+    }
+
+    @Test
+    fun `typed letters never reach the field`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.onWeightTyped("7a2kg")
+
+        assertEquals("72", collectedState(viewModel.uiState).weight)
+    }
+
+    @Test
+    fun `a second separator never reaches the field`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.onWeightTyped("72.4.5")
+
+        assertEquals("72.4", collectedState(viewModel.uiState).weight)
+    }
+
+    @Test
+    fun `a second digit after the separator is refused`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.onWeightTyped("72.45")
+
+        assertEquals("72.4", collectedState(viewModel.uiState).weight)
+    }
+
+    @Test
+    fun `a separator typed before any digit gains a leading zero`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.onWeightTyped(".")
+
+        assertEquals("0.", collectedState(viewModel.uiState).weight)
+    }
+
+    @Test
+    fun `digits typed after a leading separator are not stranded`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.onWeightTyped(".7")
+        viewModel.onWeightTyped("0.72")
+
+        assertEquals("0.7", collectedState(viewModel.uiState).weight)
+    }
+
+    @Test
+    fun `a Weight still carrying the separator just typed saves as whole kilograms`() = runTest {
+        val repository = FakeWeightRepository()
+        val viewModel = createViewModel(repository)
+        viewModel.onWeightTyped("72.")
+
+        viewModel.save()
+
+        assertEquals(72_000, repository.recordOn(LocalDate.now())?.grams)
+    }
+
+    @Test
+    fun `digits no keyboard of this app produces never reach the field`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.onWeightTyped("٧٢")
+
+        assertEquals("", collectedState(viewModel.uiState).weight)
+    }
+
+    @Test
+    fun `a Weight is not judged while it is being typed`() = runTest {
+        val viewModel = createViewModel()
+
+        viewModel.onWeightTyped("0.9")
+
+        assertNull(collectedState(viewModel.uiState).error)
+    }
+
+    @Test
+    fun `saving with an empty field reports Enter a weight`() = runTest {
         val repository = FakeWeightRepository()
         val viewModel = createViewModel(repository)
 
         viewModel.save()
 
-        assertNull(repository.recordOn(LocalDate.now()))
+        assertEquals(FormError.EMPTY_WEIGHT, collectedState(viewModel.uiState).error)
         assertFalse(collectedState(viewModel.uiState).saved)
+        assertNull(repository.recordOn(LocalDate.now()))
     }
 
     @Test
-    fun `text that is not a Weight writes no Record`() = runTest {
+    fun `a Weight under one kilogram is reported as out of range`() = runTest {
         val repository = FakeWeightRepository()
         val viewModel = createViewModel(repository)
+        viewModel.onWeightTyped("0.9")
 
-        for (text in listOf("kg", "7.2.4", "72.46", "Infinity", "1e3", "5000000", "0")) {
-            viewModel.onWeightTyped(text)
-            viewModel.save()
-        }
+        viewModel.save()
 
+        assertEquals(FormError.WEIGHT_OUT_OF_RANGE, collectedState(viewModel.uiState).error)
         assertNull(repository.recordOn(LocalDate.now()))
+    }
+
+    @Test
+    fun `a Weight over five hundred kilograms is reported as out of range`() = runTest {
+        val repository = FakeWeightRepository()
+        val viewModel = createViewModel(repository)
+        viewModel.onWeightTyped("500.1")
+
+        viewModel.save()
+
+        assertEquals(FormError.WEIGHT_OUT_OF_RANGE, collectedState(viewModel.uiState).error)
+        assertNull(repository.recordOn(LocalDate.now()))
+    }
+
+    @Test
+    fun `a typo that adds a zero is reported as out of range`() = runTest {
+        val repository = FakeWeightRepository()
+        val viewModel = createViewModel(repository)
+        viewModel.onWeightTyped("724")
+
+        viewModel.save()
+
+        assertEquals(FormError.WEIGHT_OUT_OF_RANGE, collectedState(viewModel.uiState).error)
+        assertNull(repository.recordOn(LocalDate.now()))
+    }
+
+    @Test
+    fun `one kilogram is accepted`() = runTest {
+        val repository = FakeWeightRepository()
+        val viewModel = createViewModel(repository)
+        viewModel.onWeightTyped("1")
+
+        viewModel.save()
+
+        assertEquals(1_000, repository.recordOn(LocalDate.now())?.grams)
+    }
+
+    @Test
+    fun `five hundred kilograms is accepted`() = runTest {
+        val repository = FakeWeightRepository()
+        val viewModel = createViewModel(repository)
+        viewModel.onWeightTyped("500")
+
+        viewModel.save()
+
+        assertEquals(500_000, repository.recordOn(LocalDate.now())?.grams)
+    }
+
+    @Test
+    fun `dismissing the message leaves the typed text and the Record Date untouched`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.onWeightTyped("0.9")
+        viewModel.save()
+        val reported = collectedState(viewModel.uiState)
+
+        viewModel.dismissError()
+
+        val dismissed = collectedState(viewModel.uiState)
+        assertNull(dismissed.error)
+        assertEquals("0.9", dismissed.weight)
+        assertEquals(reported.date, dismissed.date)
     }
 
     private fun createViewModel(

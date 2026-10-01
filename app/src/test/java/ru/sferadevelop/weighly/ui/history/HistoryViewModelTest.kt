@@ -70,7 +70,7 @@ class HistoryViewModelTest {
     }
 
     @Test
-    fun `a row shows the Record Date as 2026-09-30 and the Weight to one decimal place`() = runTest {
+    fun `a row shows the Record Date and the Weight to one decimal place`() = runTest {
         val repository = FakeWeightRepository(listOf(record("2026-09-30", grams = 72_400)))
         val viewModel = HistoryViewModel(repository)
 
