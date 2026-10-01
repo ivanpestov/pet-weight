@@ -16,6 +16,7 @@ import ru.sferadevelop.weighly.domain.Record
 import ru.sferadevelop.weighly.domain.WeightRepository
 import ru.sferadevelop.weighly.ui.filterTypedWeight
 import ru.sferadevelop.weighly.ui.weightFromDisplay
+import ru.sferadevelop.weighly.ui.weightToDisplay
 import ru.sferadevelop.weighly.weighlyApplication
 import java.time.LocalDate
 
@@ -24,9 +25,14 @@ class FormViewModel(
     private val savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
-    /** The Record Date being written to. Absent in the route means a Record for today. */
-    private val recordDate: LocalDate =
-        savedStateHandle.get<Long>(EPOCH_DAY_KEY)?.let(LocalDate::ofEpochDay) ?: LocalDate.now()
+    /**
+     * The Record Date being written against. The route's date when it carries one, today
+     * otherwise, and whatever the calendar picks afterwards.
+     */
+    private val recordDate: StateFlow<Long> = savedStateHandle.getStateFlow(
+        RECORD_DATE_KEY,
+        savedStateHandle.get<Long>(EPOCH_DAY_KEY) ?: LocalDate.now().toEpochDay()
+    )
 
     private val typedWeight: StateFlow<String> = savedStateHandle.getStateFlow(WEIGHT_KEY, "")
 
@@ -37,23 +43,64 @@ class FormViewModel(
     /** Guards a second tap on Save while the first write is still in flight. */
     private var writing = false
 
+    /** Set once the Form has been typed into, so a late prefill cannot land on top. */
+    private var typedInto = false
+
     val uiState: StateFlow<FormUiState> =
-        combine(typedWeight, saved, error) { weight, saved, error ->
+        combine(typedWeight, recordDate, saved, error) { weight, date, saved, error ->
             FormUiState(
                 weight = weight,
-                date = recordDate.toString(),
+                date = LocalDate.ofEpochDay(date).toString(),
+                epochDay = date,
                 saved = saved,
                 error = error
             )
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-            initialValue = FormUiState(weight = typedWeight.value, date = recordDate.toString())
+            initialValue = FormUiState(
+                weight = typedWeight.value,
+                date = recordDateValue().toString(),
+                epochDay = recordDate.value
+            )
         )
+
+    init {
+        prefillLastWeight()
+    }
+
+    private fun recordDateValue(): LocalDate = LocalDate.ofEpochDay(recordDate.value)
+
+    /**
+     * Opens the field on the Weight of the Record with the greatest Record Date not after today,
+     * so that daily entry is a correction of a digit or two. A Record dated in the future is
+     * passed over: an accidental one would otherwise poison entry every day.
+     *
+     * Runs once per Form rather than once per ViewModel: after recreation the field carries
+     * whatever was typed, which may deliberately be nothing.
+     */
+    private fun prefillLastWeight() {
+        if (savedStateHandle.get<Boolean>(PREFILLED_KEY) == true) return
+        viewModelScope.launch {
+            val lastRecord = repository.latestRecordNotAfter(LocalDate.now())
+            if (lastRecord != null && !typedInto && typedWeight.value.isEmpty()) {
+                savedStateHandle[WEIGHT_KEY] = weightToDisplay(lastRecord.grams)
+            }
+            // Marked only once the answer is in: a process death while waiting would otherwise
+            // leave a Form that never prefills again.
+            savedStateHandle[PREFILLED_KEY] = true
+        }
+    }
 
     /** Keeps only what may be a Weight; judging it waits for Save. */
     fun onWeightTyped(weight: String) {
+        typedInto = true
         savedStateHandle[WEIGHT_KEY] = filterTypedWeight(weight)
+    }
+
+    /** Moves the Form onto [date]: the one gesture that enters a backdated Record. */
+    fun onDatePicked(date: LocalDate) {
+        savedStateHandle[RECORD_DATE_KEY] = date.toEpochDay()
     }
 
     /**
@@ -74,7 +121,7 @@ class FormViewModel(
             else -> {
                 writing = true
                 viewModelScope.launch {
-                    repository.save(Record(date = recordDate, grams = grams))
+                    repository.save(Record(date = recordDateValue(), grams = grams))
                     saved.value = true
                 }
             }
@@ -93,6 +140,8 @@ class FormViewModel(
         private const val EPOCH_DAY_KEY = "epochDay"
 
         private const val WEIGHT_KEY = "weight"
+        private const val RECORD_DATE_KEY = "recordEpochDay"
+        private const val PREFILLED_KEY = "prefilled"
 
         /** The Weights a bathroom scale can produce: 1.0 kg to 500.0 kg, boundaries included. */
         private const val MIN_GRAMS = 1_000
