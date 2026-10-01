@@ -1,6 +1,6 @@
-# Масса
+# Weighly
 
-A personal Android app for tracking body mass. It keeps a journal of measurements: one Weight per calendar date, editable, and enterable for past days.
+Weighly is a personal Android app for tracking body mass. It keeps a journal of measurements: one Weight per calendar date, editable, and enterable for past days.
 
 ## Language
 
