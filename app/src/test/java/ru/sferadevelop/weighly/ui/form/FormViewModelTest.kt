@@ -11,6 +11,7 @@ import org.junit.Test
 import ru.sferadevelop.weighly.FakeWeightRepository
 import ru.sferadevelop.weighly.MainDispatcherRule
 import ru.sferadevelop.weighly.collectedState
+import ru.sferadevelop.weighly.domain.Record
 import ru.sferadevelop.weighly.domain.WeightRepository
 import java.time.LocalDate
 
@@ -24,6 +25,77 @@ class FormViewModelTest {
         val viewModel = createViewModel()
 
         assertEquals(LocalDate.now().toString(), collectedState(viewModel.uiState).date)
+    }
+
+    @Test
+    fun `the Weight field opens carrying the Weight of the last Record`() = runTest {
+        val repository = FakeWeightRepository(
+            listOf(
+                Record(daysAgo(2), 72_100),
+                Record(daysAgo(1), 71_900)
+            )
+        )
+
+        val viewModel = createViewModel(repository)
+
+        assertEquals("71.9", collectedState(viewModel.uiState).weight)
+    }
+
+    @Test
+    fun `a Record dated after today does not reach the prefill`() = runTest {
+        val repository = FakeWeightRepository(
+            listOf(
+                Record(daysAgo(1), 71_900),
+                Record(daysAhead(30), 60_000)
+            )
+        )
+
+        val viewModel = createViewModel(repository)
+
+        assertEquals("71.9", collectedState(viewModel.uiState).weight)
+    }
+
+    @Test
+    fun `a History with no Records opens an empty field`() = runTest {
+        val viewModel = createViewModel(FakeWeightRepository())
+
+        assertEquals("", collectedState(viewModel.uiState).weight)
+    }
+
+    @Test
+    fun `the prefill does not overwrite a Weight already typed`() = runTest {
+        val repository = FakeWeightRepository(listOf(Record(daysAgo(1), 71_900)))
+        val savedStateHandle = SavedStateHandle()
+        createViewModel(repository, savedStateHandle).onWeightTyped("68.2")
+
+        val recreated = createViewModel(repository, savedStateHandle)
+
+        assertEquals("68.2", collectedState(recreated.uiState).weight)
+    }
+
+    @Test
+    fun `the chosen Record Date survives ViewModel recreation`() = runTest {
+        val backdated = daysAgo(3)
+        val savedStateHandle = SavedStateHandle()
+        createViewModel(savedStateHandle = savedStateHandle).onDatePicked(backdated)
+
+        val recreated = createViewModel(savedStateHandle = savedStateHandle)
+
+        assertEquals(backdated.toString(), collectedState(recreated.uiState).date)
+    }
+
+    @Test
+    fun `a backdated Record is written against the chosen Record Date`() = runTest {
+        val backdated = daysAgo(3)
+        val repository = FakeWeightRepository()
+        val viewModel = createViewModel(repository)
+        viewModel.onDatePicked(backdated)
+        viewModel.onWeightTyped("72.4")
+
+        viewModel.save()
+
+        assertEquals(72_400, repository.recordOn(backdated)?.grams)
+        assertNull(repository.recordOn(LocalDate.now()))
     }
 
     @Test
@@ -267,6 +339,10 @@ class FormViewModelTest {
         assertEquals("0.9", dismissed.weight)
         assertEquals(reported.date, dismissed.date)
     }
+
+    private fun daysAgo(days: Long) = LocalDate.now().minusDays(days)
+
+    private fun daysAhead(days: Long) = LocalDate.now().plusDays(days)
 
     private fun createViewModel(
         repository: WeightRepository = FakeWeightRepository(),

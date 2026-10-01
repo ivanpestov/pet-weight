@@ -2,12 +2,15 @@ package ru.sferadevelop.weighly.ui.form
 
 /**
  * What the entry form shows: [weight] as typed, [date] as `2026-09-30`. Both are display-ready;
- * the form does no formatting of its own. [saved] turns true once the Record is written, which is
- * what sends the screen back to the History. [error], when set, is shown as a modal message.
+ * the form does no formatting of its own. [epochDay] is the same Record Date as a date rather
+ * than a label, which is what the calendar opens on. [saved] turns true once the Record is
+ * written, which is what sends the screen back to the History. [error], when set, is shown as a
+ * modal message.
  */
 data class FormUiState(
     val weight: String,
     val date: String,
+    val epochDay: Long,
     val saved: Boolean = false,
     val error: FormError? = null
 )

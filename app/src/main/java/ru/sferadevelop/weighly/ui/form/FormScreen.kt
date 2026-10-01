@@ -10,28 +10,40 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import ru.sferadevelop.weighly.R
+import ru.sferadevelop.weighly.ui.filterTypedWeight
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 @Composable
 fun FormScreen(
@@ -49,6 +61,7 @@ fun FormScreen(
     FormScreen(
         uiState = uiState,
         onWeightTyped = viewModel::onWeightTyped,
+        onDatePicked = viewModel::onDatePicked,
         onSave = viewModel::save,
         onCancel = onDone,
         onDismissError = viewModel::dismissError,
@@ -61,6 +74,7 @@ fun FormScreen(
 private fun FormScreen(
     uiState: FormUiState,
     onWeightTyped: (String) -> Unit,
+    onDatePicked: (LocalDate) -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
     onDismissError: () -> Unit,
@@ -68,6 +82,19 @@ private fun FormScreen(
 ) {
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    var calendarOpen by rememberSaveable { mutableStateOf(false) }
+
+    // The field owns the caret; the Weight itself comes from the ViewModel. When the Weight
+    // changes under the field — the prefill arriving — the caret goes to its end, ready for a
+    // correction.
+    var field by remember {
+        mutableStateOf(TextFieldValue(uiState.weight, TextRange(uiState.weight.length)))
+    }
+    LaunchedEffect(uiState.weight) {
+        if (uiState.weight != field.text) {
+            field = TextFieldValue(uiState.weight, TextRange(uiState.weight.length))
+        }
+    }
 
     // The keyboard is up and the caret is in the field before the first tap: entry happens while
     // standing on the scale.
@@ -86,13 +113,22 @@ private fun FormScreen(
                 .padding(CONTENT_PADDING),
             verticalArrangement = Arrangement.spacedBy(CONTENT_PADDING)
         ) {
-            Text(
-                text = uiState.date,
-                style = MaterialTheme.typography.bodyLarge
-            )
+            OutlinedButton(onClick = { calendarOpen = true }) {
+                Text(uiState.date)
+            }
             TextField(
-                value = uiState.weight,
-                onValueChange = onWeightTyped,
+                value = field,
+                onValueChange = { typed ->
+                    // The field has to apply the filter itself, not wait to be corrected: a
+                    // refused character leaves the ViewModel's Weight unchanged, and an unchanged
+                    // Weight cannot push anything back. The caret steps back over what was
+                    // refused instead of jumping to the end of the line.
+                    val kept = filterTypedWeight(typed.text)
+                    val refused = typed.text.length - kept.length
+                    val caret = (typed.selection.end - refused).coerceIn(0, kept.length)
+                    field = TextFieldValue(text = kept, selection = TextRange(caret))
+                    onWeightTyped(typed.text)
+                },
                 label = { Text(stringResource(R.string.form_weight_label)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
@@ -128,8 +164,56 @@ private fun FormScreen(
                 }
             )
         }
+
+        if (calendarOpen) {
+            RecordDateCalendar(
+                epochDay = uiState.epochDay,
+                onPicked = {
+                    onDatePicked(it)
+                    calendarOpen = false
+                },
+                onDismiss = { calendarOpen = false }
+            )
+        }
     }
 }
+
+/** A calendar open on the Record Date being saved against, with no date it refuses. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RecordDateCalendar(
+    epochDay: Long,
+    onPicked: (LocalDate) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val calendar = rememberDatePickerState(
+        initialSelectedDateMillis = epochDay * MILLIS_PER_DAY
+    )
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val picked = calendar.selectedDateMillis?.toLocalDate()
+                    if (picked == null) onDismiss() else onPicked(picked)
+                }
+            ) {
+                Text(stringResource(R.string.action_ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        }
+    ) {
+        DatePicker(state = calendar)
+    }
+}
+
+/** The calendar answers in UTC milliseconds; a Record Date is a day, with no time of day. */
+private fun Long.toLocalDate(): LocalDate =
+    Instant.ofEpochMilli(this).atZone(ZoneOffset.UTC).toLocalDate()
 
 @get:StringRes
 private val FormError.messageId: Int
@@ -138,4 +222,5 @@ private val FormError.messageId: Int
         FormError.WEIGHT_OUT_OF_RANGE -> R.string.error_weight_out_of_range
     }
 
+private const val MILLIS_PER_DAY = 24L * 60 * 60 * 1000
 private val CONTENT_PADDING = 16.dp
