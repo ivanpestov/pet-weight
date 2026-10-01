@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.MyApplication" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Window theme used before Compose takes over. DeviceDefault.DayNight follows the system
+         light/dark setting; the platform has no NoActionBar variant of it, so the action bar is
+         switched off by hand. -->
+    <style name="Theme.Weighly" parent="android:Theme.DeviceDefault.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
 </resources>
