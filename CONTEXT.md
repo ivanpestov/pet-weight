@@ -1,25 +1,25 @@
-# Масса
+# Weighly
 
-Личное Android-приложение для отслеживания массы тела. Ведёт журнал измерений: одно значение веса на календарную дату, с возможностью правки и записи задним числом.
+Weighly is a personal Android app for tracking body mass. It keeps a journal of measurements: one Weight per calendar date, editable, and enterable for past days.
 
-## Язык
+## Language
 
-**Запись**:
-Зафиксированная масса тела на конкретную календарную дату. Дата — естественный ключ: на одну дату существует не более одной Записи.
-_Избегать_: измерение, замер, вес (как объект), entry, log
+**Record**:
+A body-mass figure fixed against one calendar date. The date is the natural key: there is at most one Record per date.
+_Avoid_: measurement, weigh-in, entry, log, reading
 
-**Вес**:
-Числовое значение массы тела в Записи, в килограммах с точностью до 0.1.
-_Избегать_: масса, показатель, значение
+**Weight**:
+The numeric body-mass value held by a Record, in kilograms to one decimal place.
+_Avoid_: mass, figure, value, result
 
-**Дата записи**:
-Календарный день, к которому относится Запись. Времени суток в модели нет: Запись описывает день, а не момент.
-_Избегать_: временная отметка, timestamp, дата измерения
+**Record Date**:
+The calendar day a Record belongs to. The model holds no time of day: a Record describes a day, not a moment.
+_Avoid_: timestamp, date taken, measurement date
 
-**История**:
-Полный перечень Записей в обратном хронологическом порядке — от самой поздней Даты записи к самой ранней.
-_Избегать_: журнал, лог, список весов
+**History**:
+The complete list of Records in reverse chronological order — from the latest Record Date to the earliest.
+_Avoid_: journal, log, list of weights
 
-**Запись задним числом**:
-Создание Записи с Датой записи в прошлом, а не текущим днём.
-_Избегать_: ретроспективная запись, backdating
+**Backdated Record**:
+A Record created with a Record Date in the past rather than the current day.
+_Avoid_: retroactive entry, past entry, historical entry
