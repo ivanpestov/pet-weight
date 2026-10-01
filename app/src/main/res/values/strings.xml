@@ -10,6 +10,10 @@
     <string name="action_save">Save</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_ok">OK</string>
+    <string name="action_replace">Replace</string>
+    <!-- Names the Record Date and the Weight that saving would overwrite, e.g.
+         "2026-09-30 already holds 72.4 kg. Replace it?" -->
+    <string name="replace_record_message">%1$s already holds %2$s. Replace it?</string>
     <string name="error_enter_weight">Enter a weight</string>
     <string name="error_weight_out_of_range">Weight must be between 1 and 500 kg</string>
 </resources>

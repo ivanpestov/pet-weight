@@ -13,6 +13,7 @@ import ru.sferadevelop.weighly.MainDispatcherRule
 import ru.sferadevelop.weighly.collectedState
 import ru.sferadevelop.weighly.domain.Record
 import ru.sferadevelop.weighly.domain.WeightRepository
+import ru.sferadevelop.weighly.ui.FormRoute
 import java.time.LocalDate
 
 class FormViewModelTest {
@@ -159,6 +160,98 @@ class FormViewModelTest {
         viewModel.save()
 
         assertEquals(72_400, repository.recordOn(LocalDate.now())?.grams)
+    }
+
+    @Test
+    fun `saving onto an occupied Record Date raises the replacement warning`() = runTest {
+        val occupied = daysAgo(1)
+        val repository = FakeWeightRepository(listOf(Record(occupied, 71_900)))
+        val viewModel = createViewModel(repository)
+        viewModel.onDatePicked(occupied)
+        viewModel.onWeightTyped("72.4")
+
+        viewModel.save()
+
+        val state = collectedState(viewModel.uiState)
+        assertEquals("71.9", state.replacement?.weight)
+        assertEquals(occupied.toString(), state.date)
+        assertEquals(71_900, repository.recordOn(occupied)?.grams)
+    }
+
+    @Test
+    fun `confirming the replacement writes the new Weight onto that Record Date`() = runTest {
+        val occupied = daysAgo(1)
+        val repository = FakeWeightRepository(listOf(Record(occupied, 71_900)))
+        val viewModel = createViewModel(repository)
+        viewModel.onDatePicked(occupied)
+        viewModel.onWeightTyped("72.4")
+        viewModel.save()
+
+        viewModel.confirmReplacement()
+
+        assertEquals(72_400, repository.recordOn(occupied)?.grams)
+        assertTrue(collectedState(viewModel.uiState).saved)
+    }
+
+    @Test
+    fun `declining the replacement leaves the Record and the Form as they were`() = runTest {
+        val occupied = daysAgo(1)
+        val repository = FakeWeightRepository(listOf(Record(occupied, 71_900)))
+        val viewModel = createViewModel(repository)
+        viewModel.onDatePicked(occupied)
+        viewModel.onWeightTyped("72.4")
+        viewModel.save()
+
+        viewModel.declineReplacement()
+
+        val state = collectedState(viewModel.uiState)
+        assertNull(state.replacement)
+        assertFalse(state.saved)
+        assertEquals("72.4", state.weight)
+        assertEquals(occupied.toString(), state.date)
+        assertEquals(71_900, repository.recordOn(occupied)?.grams)
+    }
+
+    @Test
+    fun `saving onto a free Record Date writes without a warning`() = runTest {
+        val repository = FakeWeightRepository(listOf(Record(daysAgo(1), 71_900)))
+        val viewModel = createViewModel(repository)
+        viewModel.onWeightTyped("72.4")
+
+        viewModel.save()
+
+        assertNull(collectedState(viewModel.uiState).replacement)
+        assertEquals(72_400, repository.recordOn(LocalDate.now())?.grams)
+    }
+
+    @Test
+    fun `saving onto the Record being edited does not warn about replacing it`() = runTest {
+        val edited = daysAgo(1)
+        val repository = FakeWeightRepository(listOf(Record(edited, 71_900)))
+        val viewModel = createViewModel(repository, editing = edited)
+        viewModel.onWeightTyped("72.4")
+
+        viewModel.save()
+
+        assertNull(collectedState(viewModel.uiState).replacement)
+        assertEquals(72_400, repository.recordOn(edited)?.grams)
+    }
+
+    @Test
+    fun `moving a Record onto an occupied Record Date raises the same warning`() = runTest {
+        val edited = daysAgo(1)
+        val occupied = daysAgo(2)
+        val repository = FakeWeightRepository(
+            listOf(Record(edited, 71_900), Record(occupied, 72_100))
+        )
+        val viewModel = createViewModel(repository, editing = edited)
+        viewModel.onWeightTyped("72.4")
+        viewModel.onDatePicked(occupied)
+
+        viewModel.save()
+
+        assertEquals("72.1", collectedState(viewModel.uiState).replacement?.weight)
+        assertEquals(72_100, repository.recordOn(occupied)?.grams)
     }
 
     @Test
@@ -344,8 +437,13 @@ class FormViewModelTest {
 
     private fun daysAhead(days: Long) = LocalDate.now().plusDays(days)
 
+    /** [editing] is the Record Date the Form was opened on, as the route passes it. */
     private fun createViewModel(
         repository: WeightRepository = FakeWeightRepository(),
-        savedStateHandle: SavedStateHandle = SavedStateHandle()
-    ) = FormViewModel(repository, savedStateHandle)
+        savedStateHandle: SavedStateHandle = SavedStateHandle(),
+        editing: LocalDate? = null
+    ): FormViewModel {
+        editing?.let { savedStateHandle[FormRoute::epochDay.name] = it.toEpochDay() }
+        return FormViewModel(repository, savedStateHandle)
+    }
 }

@@ -65,6 +65,8 @@ fun FormScreen(
         onSave = viewModel::save,
         onCancel = onDone,
         onDismissError = viewModel::dismissError,
+        onConfirmReplacement = viewModel::confirmReplacement,
+        onDeclineReplacement = viewModel::declineReplacement,
         modifier = modifier
     )
 }
@@ -78,6 +80,8 @@ private fun FormScreen(
     onSave: () -> Unit,
     onCancel: () -> Unit,
     onDismissError: () -> Unit,
+    onConfirmReplacement: () -> Unit,
+    onDeclineReplacement: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -160,6 +164,32 @@ private fun FormScreen(
                 confirmButton = {
                     TextButton(onClick = onDismissError) {
                         Text(stringResource(R.string.action_ok))
+                    }
+                }
+            )
+        }
+
+        // ADR-0001: a Record on an occupied Record Date is replaced only after this is confirmed.
+        uiState.replacement?.let { replacement ->
+            AlertDialog(
+                onDismissRequest = onDeclineReplacement,
+                text = {
+                    Text(
+                        stringResource(
+                            R.string.replace_record_message,
+                            uiState.date,
+                            stringResource(R.string.weight_with_unit, replacement.weight)
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = onConfirmReplacement) {
+                        Text(stringResource(R.string.action_replace))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = onDeclineReplacement) {
+                        Text(stringResource(R.string.action_cancel))
                     }
                 }
             )

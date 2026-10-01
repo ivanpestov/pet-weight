@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.sferadevelop.weighly.domain.Record
 import ru.sferadevelop.weighly.domain.WeightRepository
+import ru.sferadevelop.weighly.ui.FormRoute
 import ru.sferadevelop.weighly.ui.filterTypedWeight
 import ru.sferadevelop.weighly.ui.weightFromDisplay
 import ru.sferadevelop.weighly.ui.weightToDisplay
@@ -40,6 +41,15 @@ class FormViewModel(
 
     private val error = MutableStateFlow<FormError?>(null)
 
+    private val replacement = MutableStateFlow<Replacement?>(null)
+
+    /** The Record this Form was opened on, which saving over is not a replacement. */
+    private val editedRecordDate: LocalDate? =
+        savedStateHandle.get<Long>(EPOCH_DAY_KEY)?.let(LocalDate::ofEpochDay)
+
+    /** The Weight the raised warning would write, already read and judged. */
+    private var warnedGrams: Int? = null
+
     /** Guards a second tap on Save while the first write is still in flight. */
     private var writing = false
 
@@ -47,13 +57,20 @@ class FormViewModel(
     private var typedInto = false
 
     val uiState: StateFlow<FormUiState> =
-        combine(typedWeight, recordDate, saved, error) { weight, date, saved, error ->
+        combine(
+            typedWeight,
+            recordDate,
+            saved,
+            error,
+            replacement
+        ) { weight, date, saved, error, replacement ->
             FormUiState(
                 weight = weight,
                 date = LocalDate.ofEpochDay(date).toString(),
                 epochDay = date,
                 saved = saved,
-                error = error
+                error = error,
+                replacement = replacement
             )
         }.stateIn(
             scope = viewModelScope,
@@ -104,8 +121,9 @@ class FormViewModel(
     }
 
     /**
-     * Writes the typed Weight against the Record Date, or reports why it will not. The write runs
-     * on [viewModelScope], so leaving the screen cannot cancel it halfway.
+     * Writes the typed Weight against the Record Date, or reports why it will not: an impossible
+     * Weight, or a Record already stored on that date, which ADR-0001 says is replaced only after
+     * the warning is confirmed.
      */
     fun save() {
         if (writing) return
@@ -121,11 +139,36 @@ class FormViewModel(
             else -> {
                 writing = true
                 viewModelScope.launch {
-                    repository.save(Record(date = recordDateValue(), grams = grams))
-                    saved.value = true
+                    val occupant = repository.recordOn(recordDateValue())
+                    if (occupant == null || recordDateValue() == editedRecordDate) {
+                        write(grams)
+                    } else {
+                        warnedGrams = grams
+                        replacement.value = Replacement(weight = weightToDisplay(occupant.grams))
+                    }
                 }
             }
         }
+    }
+
+    /** Replaces the Record on that Record Date: the deliberate way to correct an old Weight. */
+    fun confirmReplacement() {
+        val grams = warnedGrams ?: return declineReplacement()
+        replacement.value = null
+        viewModelScope.launch { write(grams) }
+    }
+
+    /** Leaves the Form as it was, so a different Record Date can be picked. */
+    fun declineReplacement() {
+        warnedGrams = null
+        replacement.value = null
+        writing = false
+    }
+
+    private suspend fun write(grams: Int) {
+        writing = true
+        repository.save(Record(date = recordDateValue(), grams = grams))
+        saved.value = true
     }
 
     /**
@@ -137,7 +180,7 @@ class FormViewModel(
 
     companion object {
         /** The optional Record Date in the Form's route, as an epoch day. */
-        private const val EPOCH_DAY_KEY = "epochDay"
+        private val EPOCH_DAY_KEY = FormRoute::epochDay.name
 
         private const val WEIGHT_KEY = "weight"
         private const val RECORD_DATE_KEY = "recordEpochDay"
