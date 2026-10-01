@@ -2,15 +2,13 @@ package ru.sferadevelop.weighly.ui.history
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import ru.sferadevelop.weighly.FakeWeightRepository
 import ru.sferadevelop.weighly.MainDispatcherRule
+import ru.sferadevelop.weighly.collectedState
 import ru.sferadevelop.weighly.domain.Record
 import ru.sferadevelop.weighly.domain.WeightRepository
 import java.time.LocalDate
@@ -31,7 +29,7 @@ class HistoryViewModelTest {
         )
         val viewModel = HistoryViewModel(repository)
 
-        val state = collectedState(viewModel)
+        val state = collectedState(viewModel.uiState)
 
         assertEquals(
             listOf("2026-09-30", "2026-09-29", "2026-09-28"),
@@ -49,7 +47,7 @@ class HistoryViewModelTest {
         )
         val viewModel = HistoryViewModel(repository)
 
-        val state = collectedState(viewModel)
+        val state = collectedState(viewModel.uiState)
 
         assertEquals(
             listOf("2099-01-01", "2026-09-30"),
@@ -61,14 +59,14 @@ class HistoryViewModelTest {
     fun `a History is loading until storage answers`() = runTest {
         val viewModel = HistoryViewModel(SilentWeightRepository())
 
-        assertEquals(HistoryUiState.Loading, collectedState(viewModel))
+        assertEquals(HistoryUiState.Loading, collectedState(viewModel.uiState))
     }
 
     @Test
     fun `a History with no Records is empty rather than still loading`() = runTest {
         val viewModel = HistoryViewModel(FakeWeightRepository())
 
-        assertEquals(HistoryUiState.Empty, collectedState(viewModel))
+        assertEquals(HistoryUiState.Empty, collectedState(viewModel.uiState))
     }
 
     @Test
@@ -76,7 +74,7 @@ class HistoryViewModelTest {
         val repository = FakeWeightRepository(listOf(record("2026-09-30", grams = 72_400)))
         val viewModel = HistoryViewModel(repository)
 
-        val row = (collectedState(viewModel) as HistoryUiState.History).rows.single()
+        val row = (collectedState(viewModel.uiState) as HistoryUiState.History).rows.single()
 
         assertEquals("2026-09-30", row.date)
         assertEquals("72.4", row.weight)
@@ -87,7 +85,7 @@ class HistoryViewModelTest {
         val repository = FakeWeightRepository(listOf(record("2026-09-30", grams = 80_000)))
         val viewModel = HistoryViewModel(repository)
 
-        val row = (collectedState(viewModel) as HistoryUiState.History).rows.single()
+        val row = (collectedState(viewModel.uiState) as HistoryUiState.History).rows.single()
 
         assertEquals("80.0", row.weight)
     }
@@ -97,7 +95,7 @@ class HistoryViewModelTest {
         val repository = FakeWeightRepository(listOf(record("2026-09-30", grams = 72_450)))
         val viewModel = HistoryViewModel(repository)
 
-        val row = (collectedState(viewModel) as HistoryUiState.History).rows.single()
+        val row = (collectedState(viewModel.uiState) as HistoryUiState.History).rows.single()
 
         assertEquals("72.5", row.weight)
     }
@@ -107,7 +105,7 @@ class HistoryViewModelTest {
         val repository = FakeWeightRepository(listOf(record("2026-09-30", grams = 9_500)))
         val viewModel = HistoryViewModel(repository)
 
-        val row = (collectedState(viewModel) as HistoryUiState.History).rows.single()
+        val row = (collectedState(viewModel.uiState) as HistoryUiState.History).rows.single()
 
         assertEquals("9.5", row.weight)
     }
@@ -119,13 +117,5 @@ class HistoryViewModelTest {
         private val delegate: WeightRepository = FakeWeightRepository()
     ) : WeightRepository by delegate {
         override fun records(): Flow<List<Record>> = MutableSharedFlow()
-    }
-
-    /** Reads screen state once a collector is attached, as the History screen attaches one. */
-    private fun TestScope.collectedState(viewModel: HistoryViewModel): HistoryUiState {
-        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            viewModel.uiState.collect { }
-        }
-        return viewModel.uiState.value
     }
 }

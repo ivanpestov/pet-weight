@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.stateIn
 import ru.sferadevelop.weighly.weighlyApplication
 import ru.sferadevelop.weighly.domain.Record
 import ru.sferadevelop.weighly.domain.WeightRepository
+import ru.sferadevelop.weighly.ui.weightToDisplay
 
 class HistoryViewModel(repository: WeightRepository) : ViewModel() {
 
@@ -41,14 +42,5 @@ class HistoryViewModel(repository: WeightRepository) : ViewModel() {
 
 private fun Record.toRow() = RecordRow(
     date = date.toString(),
-    weight = formatKilograms(grams)
+    weight = weightToDisplay(grams)
 )
-
-/**
- * Renders grams as kilograms to one decimal place, rounding to the nearest 100 g. Integer
- * arithmetic throughout: 0.1 kg has no exact binary floating-point representation.
- */
-private fun formatKilograms(grams: Int): String {
-    val tenthsOfKilogram = (grams + 50) / 100
-    return "${tenthsOfKilogram / 10}.${tenthsOfKilogram % 10}"
-}
