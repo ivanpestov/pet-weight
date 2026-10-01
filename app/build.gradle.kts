@@ -4,14 +4,14 @@ plugins {
 }
 
 android {
-    namespace = "com.example.myapplication"
+    namespace = "ru.sferadevelop.weighly"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.example.myapplication"
-        minSdk = 24
+        applicationId = "ru.sferadevelop.weighly"
+        minSdk = 31
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
