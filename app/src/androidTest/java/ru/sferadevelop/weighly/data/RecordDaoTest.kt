@@ -73,6 +73,23 @@ class RecordDaoTest {
     }
 
     @Test
+    fun movingARecordOntoAnOccupiedRecordDateLeavesOneRecordThere() = runBlocking {
+        dao.insert(entity("2026-09-30", grams = 71_900))
+        dao.insert(entity("2026-09-25", grams = 72_100))
+
+        dao.move(
+            fromEpochDay = LocalDate.parse("2026-09-30").toEpochDay(),
+            record = entity("2026-09-25", grams = 71_900)
+        )
+
+        val records = dao.observeAll().first()
+        assertEquals(1, records.size)
+        assertEquals("2026-09-25", LocalDate.ofEpochDay(records.single().epochDay).toString())
+        assertEquals(71_900, records.single().grams)
+        assertNull(dao.findOn(LocalDate.parse("2026-09-30").toEpochDay()))
+    }
+
+    @Test
     fun aReadAfterAWriteReturnsTheSameWeightInGrams() = runBlocking {
         dao.insert(entity("2026-09-30", grams = 72_450))
 

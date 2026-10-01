@@ -1,5 +1,6 @@
 package ru.sferadevelop.weighly.ui.history
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,17 +30,24 @@ import ru.sferadevelop.weighly.R
 @Composable
 fun HistoryScreen(
     onAddRecord: () -> Unit,
+    onEditRecord: (Long) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    HistoryScreen(uiState = uiState, onAddRecord = onAddRecord, modifier = modifier)
+    HistoryScreen(
+        uiState = uiState,
+        onAddRecord = onAddRecord,
+        onEditRecord = onEditRecord,
+        modifier = modifier
+    )
 }
 
 @Composable
 private fun HistoryScreen(
     uiState: HistoryUiState,
     onAddRecord: () -> Unit,
+    onEditRecord: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -58,6 +66,7 @@ private fun HistoryScreen(
             HistoryUiState.Empty -> EmptyHistory(modifier = Modifier.padding(innerPadding))
             is HistoryUiState.History -> RecordList(
                 rows = uiState.rows,
+                onEditRecord = onEditRecord,
                 modifier = Modifier.padding(innerPadding)
             )
         }
@@ -84,7 +93,11 @@ private fun EmptyHistory(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun RecordList(rows: List<RecordRow>, modifier: Modifier = Modifier) {
+private fun RecordList(
+    rows: List<RecordRow>,
+    onEditRecord: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         // Scaffold's inner padding covers the bars but not the floating button, which would
@@ -92,17 +105,18 @@ private fun RecordList(rows: List<RecordRow>, modifier: Modifier = Modifier) {
         contentPadding = PaddingValues(bottom = FAB_CLEARANCE)
     ) {
         items(items = rows, key = RecordRow::date) { row ->
-            RecordListItem(row)
+            RecordListItem(row = row, onEdit = { onEditRecord(row.epochDay) })
             HorizontalDivider()
         }
     }
 }
 
 @Composable
-private fun RecordListItem(row: RecordRow, modifier: Modifier = Modifier) {
+private fun RecordListItem(row: RecordRow, onEdit: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .clickable(onClick = onEdit)
             .padding(horizontal = HORIZONTAL_PADDING, vertical = VERTICAL_PADDING),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {

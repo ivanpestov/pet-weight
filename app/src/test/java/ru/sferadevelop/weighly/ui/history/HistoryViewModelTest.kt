@@ -81,6 +81,16 @@ class HistoryViewModelTest {
     }
 
     @Test
+    fun `a row carries its Record Date as a date, so the Record can be opened`() = runTest {
+        val repository = FakeWeightRepository(listOf(record("2026-09-30", grams = 72_400)))
+        val viewModel = HistoryViewModel(repository)
+
+        val row = (collectedState(viewModel.uiState) as HistoryUiState.History).rows.single()
+
+        assertEquals(LocalDate.parse("2026-09-30").toEpochDay(), row.epochDay)
+    }
+
+    @Test
     fun `a Weight with no decimal part still shows one decimal place`() = runTest {
         val repository = FakeWeightRepository(listOf(record("2026-09-30", grams = 80_000)))
         val viewModel = HistoryViewModel(repository)

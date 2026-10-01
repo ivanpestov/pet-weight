@@ -41,6 +41,7 @@ class HistoryViewModel(repository: WeightRepository) : ViewModel() {
 }
 
 private fun Record.toRow() = RecordRow(
+    epochDay = date.toEpochDay(),
     date = date.toString(),
     weight = weightToDisplay(grams)
 )

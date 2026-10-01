@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -24,4 +25,14 @@ interface RecordDao {
 
     @Query("DELETE FROM records WHERE epoch_day = :epochDay")
     suspend fun deleteOn(epochDay: Long)
+
+    /**
+     * Moves a Record onto another day in one transaction: a half-applied move would leave the
+     * same Record on two dates, or on none.
+     */
+    @Transaction
+    suspend fun move(fromEpochDay: Long, record: RecordEntity) {
+        deleteOn(fromEpochDay)
+        insert(record)
+    }
 }

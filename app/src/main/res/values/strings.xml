@@ -6,6 +6,7 @@
     <!-- Weight with its unit, e.g. "72.4 kg". The number itself is formatted by the ViewModel. -->
     <string name="weight_with_unit">%1$s kg</string>
     <string name="form_title_new">New record</string>
+    <string name="form_title_edit">Edit record</string>
     <string name="form_weight_label">Weight (kg)</string>
     <string name="action_save">Save</string>
     <string name="action_cancel">Cancel</string>

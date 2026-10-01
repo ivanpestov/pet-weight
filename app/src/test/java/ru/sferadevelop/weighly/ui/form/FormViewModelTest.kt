@@ -238,6 +238,100 @@ class FormViewModelTest {
     }
 
     @Test
+    fun `a Form opened on a Record carries its Weight and its Record Date`() = runTest {
+        val edited = daysAgo(2)
+        val repository = FakeWeightRepository(
+            listOf(Record(edited, 71_900), Record(daysAgo(1), 72_400))
+        )
+
+        val viewModel = createViewModel(repository, editing = edited)
+
+        val state = collectedState(viewModel.uiState)
+        assertEquals("71.9", state.weight)
+        assertEquals(edited.toString(), state.date)
+        assertTrue(state.editing)
+    }
+
+    @Test
+    fun `a Form opened without a Record is not in edit mode`() = runTest {
+        val viewModel = createViewModel()
+
+        assertFalse(collectedState(viewModel.uiState).editing)
+    }
+
+    @Test
+    fun `correcting the Weight updates the Record in place`() = runTest {
+        val edited = daysAgo(1)
+        val repository = FakeWeightRepository(listOf(Record(edited, 71_900)))
+        val viewModel = createViewModel(repository, editing = edited)
+        viewModel.onWeightTyped("72.4")
+
+        viewModel.save()
+
+        assertEquals(72_400, repository.recordOn(edited)?.grams)
+    }
+
+    @Test
+    fun `moving a Record onto a free Record Date empties the old one`() = runTest {
+        val edited = daysAgo(1)
+        val moved = daysAgo(5)
+        val repository = FakeWeightRepository(listOf(Record(edited, 71_900)))
+        val viewModel = createViewModel(repository, editing = edited)
+        viewModel.onWeightTyped("71.9")
+        viewModel.onDatePicked(moved)
+
+        viewModel.save()
+
+        assertNull(repository.recordOn(edited))
+        assertEquals(71_900, repository.recordOn(moved)?.grams)
+    }
+
+    @Test
+    fun `confirming a move onto an occupied Record Date empties the old one`() = runTest {
+        val edited = daysAgo(1)
+        val occupied = daysAgo(2)
+        val repository = FakeWeightRepository(
+            listOf(Record(edited, 71_900), Record(occupied, 72_100))
+        )
+        val viewModel = createViewModel(repository, editing = edited)
+        viewModel.onWeightTyped("71.9")
+        viewModel.onDatePicked(occupied)
+        viewModel.save()
+
+        viewModel.confirmReplacement()
+
+        assertNull(repository.recordOn(edited))
+        assertEquals(71_900, repository.recordOn(occupied)?.grams)
+    }
+
+    @Test
+    fun `a Record moved back onto its own Record Date stays where it was`() = runTest {
+        val edited = daysAgo(1)
+        val repository = FakeWeightRepository(listOf(Record(edited, 71_900)))
+        val viewModel = createViewModel(repository, editing = edited)
+        viewModel.onWeightTyped("72.4")
+        viewModel.onDatePicked(daysAgo(5))
+        viewModel.onDatePicked(edited)
+
+        viewModel.save()
+
+        assertEquals(72_400, repository.recordOn(edited)?.grams)
+        assertNull(repository.recordOn(daysAgo(5)))
+    }
+
+    @Test
+    fun `a Form opened on a Record that is no longer stored opens an empty field`() = runTest {
+        val gone = daysAgo(1)
+
+        val viewModel = createViewModel(FakeWeightRepository(), editing = gone)
+
+        val state = collectedState(viewModel.uiState)
+        assertEquals("", state.weight)
+        assertEquals(gone.toString(), state.date)
+        assertTrue(state.editing)
+    }
+
+    @Test
     fun `moving a Record onto an occupied Record Date raises the same warning`() = runTest {
         val edited = daysAgo(1)
         val occupied = daysAgo(2)
