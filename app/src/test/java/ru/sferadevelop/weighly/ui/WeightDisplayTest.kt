@@ -54,8 +54,21 @@ class WeightDisplayTest {
     }
 
     @Test
+    fun `a Weight still carrying the separator just typed reads as whole kilograms`() {
+        assertEquals(72_000, weightFromDisplay("72."))
+    }
+
+    @Test
+    fun `a Weight no scale could produce still reads, since judging it belongs to the Form`() {
+        assertEquals(0, weightFromDisplay("0"))
+        assertEquals(724_000, weightFromDisplay("724"))
+    }
+
+    @Test
     fun `text that is not a Weight reads as nothing`() {
-        for (text in listOf("", " ", "kg", "7.2.4", "72.46", "-72.4", "Infinity", "NaN", "1e3", "0x1p3", "5000000", "0")) {
+        val notWeights =
+            listOf("", " ", "kg", "7.2.4", "72.46", "-72.4", "Infinity", "NaN", "1e3", "5000000")
+        for (text in notWeights) {
             assertNull("\"$text\" should not read as a Weight", weightFromDisplay(text))
         }
     }

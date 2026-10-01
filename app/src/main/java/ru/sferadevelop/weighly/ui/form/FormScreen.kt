@@ -1,5 +1,6 @@
 package ru.sferadevelop.weighly.ui.form
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -7,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +51,7 @@ fun FormScreen(
         onWeightTyped = viewModel::onWeightTyped,
         onSave = viewModel::save,
         onCancel = onDone,
+        onDismissError = viewModel::dismissError,
         modifier = modifier
     )
 }
@@ -60,6 +63,7 @@ private fun FormScreen(
     onWeightTyped: (String) -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
+    onDismissError: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -111,7 +115,27 @@ private fun FormScreen(
                 }
             }
         }
+
+        // The message lives in screen state, so dismissing it leaves the form exactly as it was.
+        uiState.error?.let { error ->
+            AlertDialog(
+                onDismissRequest = onDismissError,
+                text = { Text(stringResource(error.messageId)) },
+                confirmButton = {
+                    TextButton(onClick = onDismissError) {
+                        Text(stringResource(R.string.action_ok))
+                    }
+                }
+            )
+        }
     }
 }
+
+@get:StringRes
+private val FormError.messageId: Int
+    get() = when (this) {
+        FormError.EMPTY_WEIGHT -> R.string.error_enter_weight
+        FormError.WEIGHT_OUT_OF_RANGE -> R.string.error_weight_out_of_range
+    }
 
 private val CONTENT_PADDING = 16.dp
