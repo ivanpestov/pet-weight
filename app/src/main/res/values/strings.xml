@@ -17,4 +17,6 @@
     <string name="replace_record_message">%1$s already holds %2$s. Replace it?</string>
     <string name="error_enter_weight">Enter a weight</string>
     <string name="error_weight_out_of_range">Weight must be between 1 and 500 kg</string>
+    <string name="action_undo">Undo</string>
+    <string name="history_record_deleted">Record deleted</string>
 </resources>

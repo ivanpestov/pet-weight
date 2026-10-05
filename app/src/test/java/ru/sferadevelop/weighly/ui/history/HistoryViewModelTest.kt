@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import ru.sferadevelop.weighly.FakeWeightRepository
@@ -118,6 +119,122 @@ class HistoryViewModelTest {
         val row = (collectedState(viewModel.uiState) as HistoryUiState.History).rows.single()
 
         assertEquals("9.5", row.weight)
+    }
+
+    @Test
+    fun `a swipe removes the Record from the History`() = runTest {
+        val repository = FakeWeightRepository(listOf(record("2026-09-30", grams = 72_400)))
+        val viewModel = HistoryViewModel(repository)
+        collectedState(viewModel.uiState)
+
+        viewModel.deleteRecord(LocalDate.parse("2026-09-30").toEpochDay())
+
+        assertEquals(HistoryUiState.Empty, collectedState(viewModel.uiState))
+    }
+
+    @Test
+    fun `undo restores the Record with the same Record Date and the same Weight`() = runTest {
+        val date = LocalDate.parse("2026-09-30")
+        val repository = FakeWeightRepository(listOf(record("2026-09-30", grams = 72_400)))
+        val viewModel = HistoryViewModel(repository)
+        viewModel.deleteRecord(date.toEpochDay())
+
+        viewModel.undoDeletion(date.toEpochDay())
+
+        assertEquals(72_400, repository.recordOn(date)?.grams)
+    }
+
+    @Test
+    fun `undo returns a deleted Record to its place in the History`() = runTest {
+        val date = LocalDate.parse("2026-09-30")
+        val repository = FakeWeightRepository(
+            listOf(record("2026-09-30", grams = 72_400), record("2026-09-29", grams = 72_100))
+        )
+        val viewModel = HistoryViewModel(repository)
+        viewModel.deleteRecord(date.toEpochDay())
+
+        viewModel.undoDeletion(date.toEpochDay())
+
+        assertEquals(
+            listOf("2026-09-30", "2026-09-29"),
+            (collectedState(viewModel.uiState) as HistoryUiState.History).rows.map(RecordRow::date)
+        )
+    }
+
+    @Test
+    fun `once the undo window expires the deletion is final`() = runTest {
+        val date = LocalDate.parse("2026-09-30")
+        val repository = FakeWeightRepository(listOf(record("2026-09-30", grams = 72_400)))
+        val viewModel = HistoryViewModel(repository)
+        viewModel.deleteRecord(date.toEpochDay())
+
+        viewModel.finalizeDeletion(date.toEpochDay())
+
+        assertNull(repository.recordOn(date))
+    }
+
+    @Test
+    fun `undo does nothing once the undo window has expired`() = runTest {
+        val date = LocalDate.parse("2026-09-30")
+        val repository = FakeWeightRepository(listOf(record("2026-09-30", grams = 72_400)))
+        val viewModel = HistoryViewModel(repository)
+        viewModel.deleteRecord(date.toEpochDay())
+        viewModel.finalizeDeletion(date.toEpochDay())
+
+        viewModel.undoDeletion(date.toEpochDay())
+
+        assertNull(repository.recordOn(date))
+    }
+
+    @Test
+    fun `deleting the only Record and undoing it brings the History back`() = runTest {
+        val date = LocalDate.parse("2026-09-30")
+        val repository = FakeWeightRepository(listOf(record("2026-09-30", grams = 72_400)))
+        val viewModel = HistoryViewModel(repository)
+        viewModel.deleteRecord(date.toEpochDay())
+        assertEquals(HistoryUiState.Empty, collectedState(viewModel.uiState))
+
+        viewModel.undoDeletion(date.toEpochDay())
+
+        assertEquals(
+            listOf("2026-09-30"),
+            (collectedState(viewModel.uiState) as HistoryUiState.History).rows.map(RecordRow::date)
+        )
+    }
+
+    @Test
+    fun `a second swipe before the first undo window closes keeps both undoable`() = runTest {
+        val first = LocalDate.parse("2026-09-30")
+        val second = LocalDate.parse("2026-09-29")
+        val repository = FakeWeightRepository(
+            listOf(record("2026-09-30", grams = 72_400), record("2026-09-29", grams = 72_100))
+        )
+        val viewModel = HistoryViewModel(repository)
+        viewModel.deleteRecord(first.toEpochDay())
+
+        viewModel.deleteRecord(second.toEpochDay())
+        viewModel.undoDeletion(first.toEpochDay())
+
+        assertEquals(72_400, repository.recordOn(first)?.grams)
+        assertNull(repository.recordOn(second))
+    }
+
+    @Test
+    fun `finalizing one pending deletion leaves another still undoable`() = runTest {
+        val first = LocalDate.parse("2026-09-30")
+        val second = LocalDate.parse("2026-09-29")
+        val repository = FakeWeightRepository(
+            listOf(record("2026-09-30", grams = 72_400), record("2026-09-29", grams = 72_100))
+        )
+        val viewModel = HistoryViewModel(repository)
+        viewModel.deleteRecord(first.toEpochDay())
+        viewModel.deleteRecord(second.toEpochDay())
+
+        viewModel.finalizeDeletion(first.toEpochDay())
+        viewModel.undoDeletion(second.toEpochDay())
+
+        assertNull(repository.recordOn(first))
+        assertEquals(72_100, repository.recordOn(second)?.grams)
     }
 
     private fun record(date: String, grams: Int) = Record(LocalDate.parse(date), grams)
