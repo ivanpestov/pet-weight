@@ -23,3 +23,7 @@ _Avoid_: journal, log, list of weights
 **Backdated Record**:
 A Record created with a Record Date in the past rather than the current day.
 _Avoid_: retroactive entry, past entry, historical entry
+
+**Import**:
+Adding Records to the History in bulk from a file the user picks, where each line names a Record Date and a Weight. Where a file holds several lines for one calendar date, the Import keeps the earliest of them.
+_Avoid_: upload, restore, sync, merge

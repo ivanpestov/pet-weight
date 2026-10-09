@@ -19,6 +19,12 @@ interface WeightRepository {
     suspend fun save(record: Record)
 
     /**
+     * Stores every Record in [records] as one operation, each replacing whatever Record its date
+     * already held. An Import either lands whole or not at all (ADR-0004).
+     */
+    suspend fun saveAll(records: List<Record>)
+
+    /**
      * Moves a Record from [from] onto [record]'s own date as one operation: a Record edited onto
      * another day must not leave a copy of itself behind on the old one.
      */

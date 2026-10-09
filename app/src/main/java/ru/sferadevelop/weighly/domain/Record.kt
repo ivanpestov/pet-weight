@@ -13,3 +13,10 @@ data class Record(
     val date: LocalDate,
     val grams: Int
 )
+
+/**
+ * The Weights a bathroom scale can produce, in grams: 1.0 kg to 500.0 kg, boundaries included.
+ * A property of a Weight rather than of any one screen, so the entry Form and an Import judge a
+ * figure by the same rule.
+ */
+val WEIGHT_RANGE_GRAMS: IntRange = 1_000..500_000

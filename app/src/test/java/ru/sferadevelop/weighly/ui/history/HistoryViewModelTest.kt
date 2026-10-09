@@ -2,6 +2,10 @@ package ru.sferadevelop.weighly.ui.history
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -259,7 +263,94 @@ class HistoryViewModelTest {
         assertNull(viewModel.exportableCsv())
     }
 
+    @Test
+    fun `an Import offers what it would add, replace and skip before writing anything`() = runTest {
+        val repository = FakeWeightRepository(listOf(record("2026-09-30", grams = 72_400)))
+        val viewModel = HistoryViewModel(repository)
+
+        viewModel.previewImport("date,weight\n2026-09-30,71.9\n2026-09-29,72.1\nrubbish,here")
+
+        assertEquals(
+            ImportPreview(adding = 1, replacing = 1, skipped = 1),
+            viewModel.importPreview.value
+        )
+        assertEquals(72_400, repository.recordOn(LocalDate.parse("2026-09-30"))?.grams)
+    }
+
+    @Test
+    fun `a confirmed Import writes every Record and replaces the dates already held`() = runTest {
+        val repository = FakeWeightRepository(listOf(record("2026-09-30", grams = 72_400)))
+        val viewModel = HistoryViewModel(repository)
+        val results = collectedResults(viewModel.importResults)
+        viewModel.previewImport("date,weight\n2026-09-30,71.9\n2026-09-29,72.1")
+
+        viewModel.confirmImport()
+
+        assertEquals(71_900, repository.recordOn(LocalDate.parse("2026-09-30"))?.grams)
+        assertEquals(72_100, repository.recordOn(LocalDate.parse("2026-09-29"))?.grams)
+        assertEquals(listOf(ImportResult.Imported(count = 2)), results)
+        assertNull(viewModel.importPreview.value)
+    }
+
+    @Test
+    fun `a cancelled Import leaves the History as it was`() = runTest {
+        val repository = FakeWeightRepository(listOf(record("2026-09-30", grams = 72_400)))
+        val viewModel = HistoryViewModel(repository)
+        viewModel.previewImport("date,weight\n2026-09-30,71.9\n2026-09-29,72.1")
+
+        viewModel.cancelImport()
+
+        assertNull(viewModel.importPreview.value)
+        assertEquals(72_400, repository.recordOn(LocalDate.parse("2026-09-30"))?.grams)
+        assertNull(repository.recordOn(LocalDate.parse("2026-09-29")))
+    }
+
+    @Test
+    fun `confirming twice writes the Import once`() = runTest {
+        val repository = FakeWeightRepository()
+        val viewModel = HistoryViewModel(repository)
+        val results = collectedResults(viewModel.importResults)
+        viewModel.previewImport("date,weight\n2026-09-29,72.1")
+
+        viewModel.confirmImport()
+        viewModel.confirmImport()
+
+        assertEquals(listOf(ImportResult.Imported(count = 1)), results)
+    }
+
+    @Test
+    fun `a file naming no Record fails instead of offering an empty Import`() = runTest {
+        val viewModel = HistoryViewModel(FakeWeightRepository())
+        val results = collectedResults(viewModel.importResults)
+
+        viewModel.previewImport("date,weight\nrubbish,here\n31.02.2026,72.4")
+
+        assertNull(viewModel.importPreview.value)
+        assertEquals(listOf(ImportResult.Failed), results)
+    }
+
+    @Test
+    fun `an Import into an empty History replaces nothing`() = runTest {
+        val viewModel = HistoryViewModel(FakeWeightRepository())
+
+        viewModel.previewImport("date,weight\n2026-09-29,72.1")
+
+        assertEquals(
+            ImportPreview(adding = 1, replacing = 0, skipped = 0),
+            viewModel.importPreview.value
+        )
+    }
+
     private fun record(date: String, grams: Int) = Record(LocalDate.parse(date), grams)
+
+    /** Keeps every Import result the ViewModel reports, the way the screen's collector does. */
+    private fun TestScope.collectedResults(results: SharedFlow<ImportResult>): List<ImportResult> {
+        val collected = mutableListOf<ImportResult>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            results.collect(collected::add)
+        }
+        return collected
+    }
 
     /** Storage that never answers, so screen state stays on its loading value. */
     private class SilentWeightRepository(

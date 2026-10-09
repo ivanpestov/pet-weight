@@ -23,6 +23,10 @@ interface RecordDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(record: RecordEntity)
 
+    /** Room wraps a single multi-row @Insert in a transaction, which is what an Import needs. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(records: List<RecordEntity>)
+
     @Query("DELETE FROM records WHERE epoch_day = :epochDay")
     suspend fun deleteOn(epochDay: Long)
 
