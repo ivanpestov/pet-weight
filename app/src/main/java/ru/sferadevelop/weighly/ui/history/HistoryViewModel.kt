@@ -72,6 +72,10 @@ class HistoryViewModel(private val repository: WeightRepository) : ViewModel() {
         pendingDeletions.remove(epochDay)
     }
 
+    /** The current History as CSV, or null when there is none to export. */
+    fun exportableCsv(): String? =
+        (uiState.value as? HistoryUiState.History)?.rows?.let(::historyCsv)
+
     companion object {
         private const val STOP_TIMEOUT_MILLIS = 5_000L
 
