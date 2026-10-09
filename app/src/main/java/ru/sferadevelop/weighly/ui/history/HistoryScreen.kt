@@ -1,5 +1,9 @@
 package ru.sferadevelop.weighly.ui.history
 
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,10 +16,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -25,21 +32,29 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import ru.sferadevelop.weighly.R
+import java.io.IOException
+import java.time.LocalDate
 
 @Composable
 fun HistoryScreen(
@@ -51,8 +66,23 @@ fun HistoryScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
     val undoLabel = stringResource(R.string.action_undo)
     val deletedMessage = stringResource(R.string.history_record_deleted)
+    val exportFailedMessage = stringResource(R.string.history_export_failed)
+
+    // CreateDocument hands back a null Uri when the user backs out of the picker, which is not
+    // a failure: nothing was written, and nothing needs to be said.
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        val csv = viewModel.exportableCsv()
+        if (uri == null || csv == null) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            val written = withContext(Dispatchers.IO) { writeCsv(context, uri, csv) }
+            if (!written) snackbarHostState.showSnackbar(exportFailedMessage)
+        }
+    }
 
     // Each deletion gets its own snackbar coroutine rather than sharing one keyed on the latest
     // Record: SnackbarHostState already queues concurrent showSnackbar() calls, so a second swipe
@@ -81,10 +111,12 @@ fun HistoryScreen(
         onAddRecord = onAddRecord,
         onEditRecord = onEditRecord,
         onDeleteRecord = viewModel::deleteRecord,
+        onExportHistory = { exportLauncher.launch(exportFileName(LocalDate.now())) },
         modifier = modifier
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HistoryScreen(
     uiState: HistoryUiState,
@@ -92,10 +124,22 @@ private fun HistoryScreen(
     onAddRecord: () -> Unit,
     onEditRecord: (Long) -> Unit,
     onDeleteRecord: (Long) -> Unit,
+    onExportHistory: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.app_name)) },
+                actions = {
+                    HistoryOverflowMenu(
+                        exportEnabled = uiState is HistoryUiState.History,
+                        onExport = onExportHistory
+                    )
+                }
+            )
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             FloatingActionButton(onClick = onAddRecord) {
@@ -118,6 +162,40 @@ private fun HistoryScreen(
         }
     }
 }
+
+@Composable
+private fun HistoryOverflowMenu(exportEnabled: Boolean, onExport: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+
+    IconButton(onClick = { expanded = true }) {
+        Icon(
+            painter = painterResource(R.drawable.ic_more_vert),
+            contentDescription = stringResource(R.string.history_overflow_menu)
+        )
+    }
+    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.history_export)) },
+            enabled = exportEnabled,
+            onClick = {
+                expanded = false
+                onExport()
+            }
+        )
+    }
+}
+
+/**
+ * Writes [csv] to [uri], true on success. False on a thrown IOException, and also when
+ * [uri] opens no stream at all - a legal [android.content.ContentResolver] answer that is
+ * just as much a failure to export as an exception would be.
+ */
+private fun writeCsv(context: Context, uri: Uri, csv: String): Boolean =
+    try {
+        context.contentResolver.openOutputStream(uri)?.use { it.write(csv.toByteArray()) } != null
+    } catch (e: IOException) {
+        false
+    }
 
 @Composable
 private fun EmptyHistory(modifier: Modifier = Modifier) {

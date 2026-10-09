@@ -237,6 +237,28 @@ class HistoryViewModelTest {
         assertEquals(72_100, repository.recordOn(second)?.grams)
     }
 
+    @Test
+    fun `exportableCsv renders the History as CSV, oldest Record Date first`() = runTest {
+        val repository = FakeWeightRepository(
+            listOf(record("2026-09-30", grams = 71_900), record("2026-09-29", grams = 72_100))
+        )
+        val viewModel = HistoryViewModel(repository)
+        collectedState(viewModel.uiState)
+
+        assertEquals(
+            "date,weight_kg\n2026-09-29,72.1\n2026-09-30,71.9",
+            viewModel.exportableCsv()
+        )
+    }
+
+    @Test
+    fun `exportableCsv is null when the History is empty`() = runTest {
+        val viewModel = HistoryViewModel(FakeWeightRepository())
+        collectedState(viewModel.uiState)
+
+        assertNull(viewModel.exportableCsv())
+    }
+
     private fun record(date: String, grams: Int) = Record(LocalDate.parse(date), grams)
 
     /** Storage that never answers, so screen state stays on its loading value. */
