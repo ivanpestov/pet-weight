@@ -5,10 +5,13 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -70,6 +73,61 @@ class HistoryViewModel(private val repository: WeightRepository) : ViewModel() {
     /** The undo window for [epochDay] has closed: the deletion stands, nothing is held for it. */
     fun finalizeDeletion(epochDay: Long) {
         pendingDeletions.remove(epochDay)
+    }
+
+    private val importPreviewFlow = MutableStateFlow<ImportPreview?>(null)
+
+    /** The counts awaiting confirmation, or null when no Import is being offered. */
+    val importPreview: StateFlow<ImportPreview?> = importPreviewFlow.asStateFlow()
+
+    private val importResultsFlow = MutableSharedFlow<ImportResult>(extraBufferCapacity = 1)
+
+    /** How each Import ended, one event per attempt. */
+    val importResults: SharedFlow<ImportResult> = importResultsFlow.asSharedFlow()
+
+    /** The Records a confirmation would write, held while the counts are on screen. */
+    private var pendingImport: List<Record> = emptyList()
+
+    /**
+     * Reads [text] as a file to Import and offers its counts for confirmation. Nothing is
+     * written yet: ADR-0004 says a file that would replace Records is confirmed first. A file
+     * naming no Record at all is a failed Import rather than an empty confirmation.
+     */
+    fun previewImport(text: String) {
+        viewModelScope.launch {
+            val parsed = parseHistoryCsv(text)
+            if (parsed.records.isEmpty()) {
+                importResultsFlow.emit(ImportResult.Failed)
+                return@launch
+            }
+            val occupied = repository.records().first().mapTo(mutableSetOf(), Record::date)
+            val replacing = parsed.records.count { it.date in occupied }
+            pendingImport = parsed.records
+            importPreviewFlow.value = ImportPreview(
+                adding = parsed.records.size - replacing,
+                replacing = replacing,
+                skipped = parsed.skipped
+            )
+        }
+    }
+
+    /** Writes the offered Records as one operation, replacing whatever their dates held. */
+    fun confirmImport() {
+        val records = pendingImport
+        clearImport()
+        if (records.isEmpty()) return
+        viewModelScope.launch {
+            repository.saveAll(records)
+            importResultsFlow.emit(ImportResult.Imported(records.size))
+        }
+    }
+
+    /** Leaves the History untouched: the offered file is forgotten, not written. */
+    fun cancelImport() = clearImport()
+
+    private fun clearImport() {
+        pendingImport = emptyList()
+        importPreviewFlow.value = null
     }
 
     /** The current History as CSV, or null when there is none to export. */

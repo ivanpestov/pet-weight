@@ -19,6 +19,9 @@ class RoomWeightRepository(private val dao: RecordDao) : WeightRepository {
 
     override suspend fun save(record: Record) = dao.insert(record.toEntity())
 
+    override suspend fun saveAll(records: List<Record>) =
+        dao.insertAll(records.map(Record::toEntity))
+
     override suspend fun move(from: LocalDate, record: Record) =
         dao.move(from.toEpochDay(), record.toEntity())
 

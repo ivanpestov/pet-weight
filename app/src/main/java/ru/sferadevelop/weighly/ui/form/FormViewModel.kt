@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import ru.sferadevelop.weighly.domain.Record
+import ru.sferadevelop.weighly.domain.WEIGHT_RANGE_GRAMS
 import ru.sferadevelop.weighly.domain.WeightRepository
 import ru.sferadevelop.weighly.ui.FormRoute
 import ru.sferadevelop.weighly.ui.filterTypedWeight
@@ -141,7 +142,7 @@ class FormViewModel(
         val grams = weightFromDisplay(typed)
         when {
             typed.none(Char::isDigit) -> error.value = FormError.EMPTY_WEIGHT
-            grams == null || grams !in MIN_GRAMS..MAX_GRAMS ->
+            grams == null || grams !in WEIGHT_RANGE_GRAMS ->
                 error.value = FormError.WEIGHT_OUT_OF_RANGE
 
             else -> {
@@ -199,10 +200,6 @@ class FormViewModel(
         private const val WEIGHT_KEY = "weight"
         private const val RECORD_DATE_KEY = "recordEpochDay"
         private const val PREFILLED_KEY = "prefilled"
-
-        /** The Weights a bathroom scale can produce: 1.0 kg to 500.0 kg, boundaries included. */
-        private const val MIN_GRAMS = 1_000
-        private const val MAX_GRAMS = 500_000
 
         private const val STOP_TIMEOUT_MILLIS = 5_000L
 

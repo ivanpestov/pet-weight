@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,6 +33,7 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
@@ -53,8 +55,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ru.sferadevelop.weighly.R
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.time.LocalDate
+import java.util.Locale
 
 @Composable
 fun HistoryScreen(
@@ -64,12 +68,15 @@ fun HistoryScreen(
     viewModel: HistoryViewModel = viewModel(factory = HistoryViewModel.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val importPreview by viewModel.importPreview.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val undoLabel = stringResource(R.string.action_undo)
     val deletedMessage = stringResource(R.string.history_record_deleted)
     val exportFailedMessage = stringResource(R.string.history_export_failed)
+    val importFailedMessage = stringResource(R.string.history_import_failed)
+    val importDoneFormat = stringResource(R.string.history_import_done)
 
     // CreateDocument hands back a null Uri when the user backs out of the picker, which is not
     // a failure: nothing was written, and nothing needs to be said.
@@ -81,6 +88,33 @@ fun HistoryScreen(
         coroutineScope.launch {
             val written = withContext(Dispatchers.IO) { writeCsv(context, uri, csv) }
             if (!written) snackbarHostState.showSnackbar(exportFailedMessage)
+        }
+    }
+
+    // A file too large to read, an unreadable one, and one naming no Record at all all land on
+    // the same message: the difference tells the user nothing they can act on.
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            val text = withContext(Dispatchers.IO) { readCsv(context, uri) }
+            if (text == null) {
+                snackbarHostState.showSnackbar(importFailedMessage)
+            } else {
+                viewModel.previewImport(text)
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.importResults.collect { result ->
+            val message = when (result) {
+                is ImportResult.Imported ->
+                    importDoneFormat.format(Locale.getDefault(), result.count)
+                ImportResult.Failed -> importFailedMessage
+            }
+            coroutineScope.launch { snackbarHostState.showSnackbar(message) }
         }
     }
 
@@ -112,6 +146,13 @@ fun HistoryScreen(
         onEditRecord = onEditRecord,
         onDeleteRecord = viewModel::deleteRecord,
         onExportHistory = { exportLauncher.launch(exportFileName(LocalDate.now())) },
+        // Every MIME type: providers report a .csv as text/plain, text/comma-separated-values,
+        // application/vnd.ms-excel or application/octet-stream, so a narrow filter hides real
+        // files. Whether the file is readable is the parser's answer, not the picker's.
+        onImportHistory = { importLauncher.launch(arrayOf("*/*")) },
+        importPreview = importPreview,
+        onConfirmImport = viewModel::confirmImport,
+        onCancelImport = viewModel::cancelImport,
         modifier = modifier
     )
 }
@@ -125,6 +166,10 @@ private fun HistoryScreen(
     onEditRecord: (Long) -> Unit,
     onDeleteRecord: (Long) -> Unit,
     onExportHistory: () -> Unit,
+    onImportHistory: () -> Unit,
+    importPreview: ImportPreview?,
+    onConfirmImport: () -> Unit,
+    onCancelImport: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -135,7 +180,8 @@ private fun HistoryScreen(
                 actions = {
                     HistoryOverflowMenu(
                         exportEnabled = uiState is HistoryUiState.History,
-                        onExport = onExportHistory
+                        onExport = onExportHistory,
+                        onImport = onImportHistory
                     )
                 }
             )
@@ -160,11 +206,44 @@ private fun HistoryScreen(
                 modifier = Modifier.padding(innerPadding)
             )
         }
+
+        // ADR-0004: an Import replaces Records on the dates it names, so the counts are shown
+        // before anything is written.
+        importPreview?.let { preview ->
+            AlertDialog(
+                onDismissRequest = onCancelImport,
+                title = { Text(stringResource(R.string.history_import_title)) },
+                text = {
+                    Text(
+                        stringResource(
+                            R.string.history_import_message,
+                            preview.adding,
+                            preview.replacing,
+                            preview.skipped
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = onConfirmImport) {
+                        Text(stringResource(R.string.action_import))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = onCancelImport) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                }
+            )
+        }
     }
 }
 
 @Composable
-private fun HistoryOverflowMenu(exportEnabled: Boolean, onExport: () -> Unit) {
+private fun HistoryOverflowMenu(
+    exportEnabled: Boolean,
+    onExport: () -> Unit,
+    onImport: () -> Unit
+) {
     var expanded by remember { mutableStateOf(false) }
 
     IconButton(onClick = { expanded = true }) {
@@ -182,6 +261,15 @@ private fun HistoryOverflowMenu(exportEnabled: Boolean, onExport: () -> Unit) {
                 onExport()
             }
         )
+        // Always enabled: an Import into an empty History is exactly the first thing a new
+        // install needs.
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.history_import)) },
+            onClick = {
+                expanded = false
+                onImport()
+            }
+        )
     }
 }
 
@@ -195,6 +283,28 @@ private fun writeCsv(context: Context, uri: Uri, csv: String): Boolean =
         context.contentResolver.openOutputStream(uri)?.use { it.write(csv.toByteArray()) } != null
     } catch (e: IOException) {
         false
+    }
+
+/**
+ * Reads [uri] as UTF-8 text, or null when it cannot be read or holds more than
+ * [IMPORT_BYTE_LIMIT] bytes. The picker offers any file on the device, so the limit is checked
+ * while reading rather than trusting a reported size.
+ */
+private fun readCsv(context: Context, uri: Uri): String? =
+    try {
+        context.contentResolver.openInputStream(uri)?.use { stream ->
+            val text = ByteArrayOutputStream()
+            val chunk = ByteArray(CHUNK_BYTES)
+            while (true) {
+                val read = stream.read(chunk)
+                if (read < 0) break
+                text.write(chunk, 0, read)
+                if (text.size() > IMPORT_BYTE_LIMIT) return null
+            }
+            text.toByteArray().toString(Charsets.UTF_8)
+        }
+    } catch (e: IOException) {
+        null
     }
 
 @Composable
@@ -284,6 +394,8 @@ private fun RecordListItem(
         }
     }
 }
+
+private const val CHUNK_BYTES = 8 * 1_024
 
 private val FAB_CLEARANCE = 88.dp
 private val HORIZONTAL_PADDING = 16.dp
